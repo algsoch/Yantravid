@@ -1,1 +1,20 @@
+# Environment variables
+.env
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+uploads/
+data/
+.DS_Store
 
