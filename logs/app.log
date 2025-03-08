@@ -1,0 +1,5 @@
+2025-03-08 20:39:18,408 - INFO - Received question: What is 2+2?
+2025-03-08 20:40:30,585 - INFO - Received question: What is 2+2?
+2025-03-08 20:46:35,161 - WARNING - Redis not available - caching disabled
+2025-03-08 20:46:56,512 - INFO - Received question: What is 2+2?
+2025-03-08 20:51:07,184 - INFO - Received question: What is 2+2?
