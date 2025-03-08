@@ -50,6 +50,11 @@ app.add_middleware(
 # Set up templates and static files
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(static_dir, exist_ok=True)
+
+# Mount static files
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # Gemini API setup - use environment variable
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -112,18 +117,48 @@ def get_model():
 
 # Health check route
 @app.get("/")
+# Replace the root route with a simpler one
+
+@app.get("/")
 async def root(request: Request):
-    """Redirect to dashboard or show simple health check"""
-    # If the request accepts HTML, redirect to dashboard
-    if "text/html" in request.headers.get("accept", ""):
-        return RedirectResponse(url="/dashboard")
+    """Root route that always shows the dashboard"""
+    logging.info("Root route accessed")
+    return await dashboard(request)
+# async def root(request: Request):
+#     """Redirect to dashboard or show simple health check"""
+#     # If the request accepts HTML, redirect to dashboard
+#     if "text/html" in request.headers.get("accept", ""):
+#         return RedirectResponse(url="/dashboard")
     
-    # Otherwise return the API status
+#     # Otherwise return the API status
+#     return {
+#         "status": "ok", 
+#         "service": "IIT Madras Assignment Helper API"
+#     }
+# Add these debug endpoints
+
+@app.get("/debug")
+async def debug_info():
+    """Debug endpoint to check environment"""
     return {
-        "status": "ok", 
-        "service": "IIT Madras Assignment Helper API"
+        "api_key_exists": bool(GEMINI_API_KEY),
+        "question_history": len(question_history),
+        "model_initialized": gemini_model is not None,
+        "templates_dir_exists": os.path.isdir("templates"),
+        "static_dir_exists": os.path.isdir("static")
     }
 
+@app.get("/debug/template")
+async def debug_template(request: Request):
+    """Test template rendering with minimal data"""
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "recent_questions": [{"question": "Test question", "answer": "Test answer", "timestamp": datetime.datetime.now()}],
+            "most_frequent": [("Test question", 1)]
+        }
+    )
 # Testing route
 @app.get("/test")
 async def test():
