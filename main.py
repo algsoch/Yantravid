@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 import zipfile
 import pandas as pd
@@ -9,6 +10,13 @@ from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
 import tempfile
 import json
+
+# Configure logging for Vercel deployment
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stdout  # Log to stdout instead of a file for serverless environments
+)
 
 # Load environment variables
 load_dotenv()
@@ -29,35 +37,46 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Setup logging - for local development
-os.makedirs("logs", exist_ok=True)
-logging.basicConfig(
-    filename="logs/app.log",
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
-
-# Gemini API setup
+# Gemini API setup - use environment variable
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
-    error_msg = "GEMINI_API_KEY not found in environment variables"
-    logging.error(error_msg)
-    raise ValueError(error_msg)
+    logging.error("GEMINI_API_KEY not found in environment variables")
+    # Don't raise an error here - simply log it and let the endpoints fail gracefully
 
+# Configure Gemini
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Initialize the model - try different model names in case of issues
-try:
-    gemini_model = genai.GenerativeModel("models/gemini-1.5-flash")
-    logging.info("Successfully initialized Gemini 1.5 Flash model")
-except Exception as first_error:
-    try:
-        logging.warning(f"First model failed: {str(first_error)}, trying alternative model")
-        gemini_model = genai.GenerativeModel("gemini-1.5-pro")
-        logging.info("Successfully initialized Gemini 1.5 Pro model")
-    except Exception as second_error:
-        logging.error(f"All model initialization attempts failed")
-        raise ValueError(f"Could not initialize any Gemini model: {str(second_error)}")
+# Global variable for the model
+gemini_model = None
+
+# Function to get or initialize the model
+def get_model():
+    global gemini_model
+    if gemini_model is not None:
+        return gemini_model
+    
+    # Try different model names
+    model_names = [
+        "models/gemini-1.5-flash",
+        "gemini-1.5-flash",
+        "models/gemini-1.5-pro",
+        "gemini-1.5-pro"
+    ]
+    
+    for name in model_names:
+        try:
+            model = genai.GenerativeModel(name)
+            # Test the model
+            test = model.generate_content("Test")
+            if test and hasattr(test, "text"):
+                logging.info(f"Successfully initialized model: {name}")
+                gemini_model = model
+                return model
+        except Exception as e:
+            logging.warning(f"Failed to initialize model {name}: {str(e)}")
+    
+    logging.error("All model initialization attempts failed")
+    return None
 
 # Health check route
 @app.get("/")
@@ -65,8 +84,7 @@ async def health_check():
     """Health check endpoint to verify the service is running"""
     return {
         "status": "ok", 
-        "service": "IIT Madras Assignment Helper API",
-        "model": "Gemini 1.5"
+        "service": "IIT Madras Assignment Helper API"
     }
 
 # Testing route
@@ -74,7 +92,11 @@ async def health_check():
 async def test():
     """Test endpoint to verify the AI model is working"""
     try:
-        response = gemini_model.generate_content("What is 2+2?")
+        model = get_model()
+        if not model:
+            return {"error": "Could not initialize AI model"}
+            
+        response = model.generate_content("What is 2+2?")
         return {
             "question": "What is 2+2?",
             "answer": response.text.strip()
@@ -93,6 +115,14 @@ async def get_answer(question: str = Form(...), file: UploadFile = None):
     try:
         logging.info(f"Received question: {question}")
         
+        # Get the model
+        model = get_model()
+        if not model:
+            return JSONResponse(
+                content={"error": "Could not initialize AI model"},
+                status_code=500
+            )
+            
         # Process file if uploaded
         if file and file.filename:
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -134,7 +164,7 @@ async def get_answer(question: str = Form(...), file: UploadFile = None):
             f"Do not include explanations or anything else. Just the direct answer."
         )
         
-        response = gemini_model.generate_content(prompt)
+        response = model.generate_content(prompt)
         
         if hasattr(response, "text"):
             # Clean up the answer - remove quotation marks, leading/trailing spaces

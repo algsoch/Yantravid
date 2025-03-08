@@ -26,3 +26,13 @@
 2025-03-08 22:10:36,281 - INFO - Successfully initialized models/gemini-1.5-flash
 2025-03-08 22:11:04,169 - INFO - Received question: What is 2+2?
 2025-03-08 22:12:54,500 - INFO - Received question: What is 2+2?
+2025-03-08 22:26:06,624 - INFO - Successfully initialized Gemini 1.5 Flash model
+2025-03-08 22:28:59,034 - INFO - Received question: What is 2+2?
+2025-03-08 22:28:59,037 - INFO - Generating answer with Gemini AI
+2025-03-08 22:29:01,267 - INFO - Gemini generated answer: 4
+2025-03-08 22:32:38,882 - INFO - Received question: What is albert einsteins?
+2025-03-08 22:32:38,965 - INFO - Generating answer with Gemini AI
+2025-03-08 22:32:39,596 - INFO - Gemini generated answer: Albert Einstein
+2025-03-08 22:33:14,262 - INFO - Received question: who is albert einstein?
+2025-03-08 22:33:14,262 - INFO - Generating answer with Gemini AI
+2025-03-08 22:33:15,008 - INFO - Gemini generated answer: A theoretical physicist who developed the theory of relativity, one of the two pillars of modern physics.  His work is also known for its influence on the philosophy of science.
