@@ -11,7 +11,7 @@ import pandas as pd
 from unittest.mock import patch, MagicMock
 
 # Import your FastAPI app
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main import app, get_model
 
 # Create a test client
