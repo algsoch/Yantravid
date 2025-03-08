@@ -47,14 +47,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Set up templates and static files
-templates = Jinja2Templates(directory="templates")
-app.mount("/static", StaticFiles(directory="static"), name="static")
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-os.makedirs(static_dir, exist_ok=True)
+# Set up templates and static files with proper directory paths
+templates_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
+static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
-# Mount static files
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
+# Handle the case where static might exist as a file
+try:
+    # Try to create directories
+    if not os.path.exists(templates_dir):
+        os.makedirs(templates_dir)
+        
+    if os.path.exists(static_dir) and not os.path.isdir(static_dir):
+        os.remove(static_dir)  # Remove if it's a file
+        
+    if not os.path.exists(static_dir):
+        os.makedirs(static_dir)
+        
+except Exception as e:
+    logging.error(f"Error creating directories: {str(e)}")
+
+# Initialize templates and mount static files (only once!)
+templates = Jinja2Templates(directory=templates_dir)
+app.mount("/static", StaticFiles(directory=static_dir, check_dir=False), name="static")
+
+# Log directory information
+logging.info(f"Templates directory: {templates_dir}")
+logging.info(f"Static directory: {static_dir}")
 
 # Gemini API setup - use environment variable
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
