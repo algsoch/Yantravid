@@ -1,0 +1,181 @@
+<!-- \dashboard.html --> -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IIT Madras Assignment Helper</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .card {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .question-form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        textarea {
+            height: 100px;
+            padding: 8px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        h2 {
+            color: #333;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+        }
+        .question-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-left: 3px solid #4CAF50;
+            background-color: #f0f0f0;
+        }
+        .answer {
+            font-weight: bold;
+            color: #333;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            color: #777;
+        }
+        .file-upload {
+            margin-top: 10px;
+        }
+        #response {
+            display: none;
+            margin-top: 20px;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0,0,0,.3);
+            border-radius: 50%;
+            border-top-color: #4CAF50;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>IIT Madras Assignment Helper</h1>
+            <p>Welcome to the Assignment Helper! This tool helps you find answers to IIT Madras Data Science graded assignment questions.</p>
+        </div>
+
+        <div class="card">
+            <h2>Ask a Question</h2>
+            <form id="questionForm" class="question-form" enctype="multipart/form-data">
+                <textarea id="question" name="question" placeholder="Enter your assignment question here..." required></textarea>
+                <div class="file-upload">
+                    <label for="file">Upload assignment file (optional):</label>
+                    <input type="file" id="file" name="file">
+                </div>
+                <button type="submit">Get Answer</button>
+            </form>
+            <div id="response" class="card">
+                <h3>Answer:</h3>
+                <div id="answer" class="answer"></div>
+            </div>
+            <div id="loading" style="display:none;">
+                <span class="loading"></span> Processing your question...
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Recent Questions</h2>
+            {% if recent_questions %}
+                {% for item in recent_questions %}
+                    <div class="question-item">
+                        <div><strong>Q:</strong> {{ item.question }}</div>
+                        <div><strong>A:</strong> {{ item.answer }}</div>
+                        <div class="timestamp">{{ item.timestamp.strftime("%Y-%m-%d %H:%M") }}{% if item.had_file %} (with file){% endif %}</div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>No questions have been asked yet.</p>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <h2>Frequently Asked Questions</h2>
+            {% if most_frequent %}
+                {% for question, count in most_frequent %}
+                    <div class="question-item">
+                        <strong>Q:</strong> {{ question }} <span>({{ count }} times)</span>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>No questions have been asked yet.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('questionForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            // Show loading indicator
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('response').style.display = 'none';
+            
+            // Get form data
+            const formData = new FormData(this);
+            
+            try {
+                // Send request to API
+                const response = await fetch('/api/', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                // Display the answer
+                document.getElementById('answer').textContent = data.answer || data.error || "No answer found";
+                document.getElementById('response').style.display = 'block';
+                
+                // Reload the page to update question history
+                setTimeout(() => {
+                    window.location.reload();
+                }, 3000);
+                
+            } catch (error) {
+                document.getElementById('answer').textContent = "Error: " + error.message;
+                document.getElementById('response').style.display = 'block';
+            } finally {
+                // Hide loading indicator
+                document.getElementById('loading').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

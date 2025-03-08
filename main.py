@@ -3,13 +3,23 @@ import sys
 import logging
 import zipfile
 import pandas as pd
+import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
 import tempfile
 import json
+import datetime
+from collections import Counter
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from functools import lru_cache
+import time
+
+# Initialize Jinja2 templates
+templates = Jinja2Templates(directory="templates")
 
 # Configure logging for Vercel deployment
 logging.basicConfig(
@@ -37,6 +47,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Set up templates and static files
+templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Gemini API setup - use environment variable
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
@@ -46,19 +60,17 @@ if not GEMINI_API_KEY:
 # Configure Gemini
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Global variable for the model
+# Global variable for the model and question history
 gemini_model = None
+question_history = []
 
-# Function to get or initialize the model
-def get_model():
-    global gemini_model
-    if gemini_model is not None:
-        return gemini_model
-    
-    # Try different model names
+# Cached function to get or initialize the model - improves performance
+@lru_cache(maxsize=1)
+def get_cached_model_name():
+    """Return the first working model name"""
     model_names = [
         "models/gemini-1.5-flash",
-        "gemini-1.5-flash",
+        "gemini-1.5-flash", 
         "models/gemini-1.5-pro",
         "gemini-1.5-pro"
     ]
@@ -66,22 +78,47 @@ def get_model():
     for name in model_names:
         try:
             model = genai.GenerativeModel(name)
-            # Test the model
+            # Simple test
             test = model.generate_content("Test")
             if test and hasattr(test, "text"):
-                logging.info(f"Successfully initialized model: {name}")
-                gemini_model = model
-                return model
+                logging.info(f"Found working model: {name}")
+                return name
         except Exception as e:
-            logging.warning(f"Failed to initialize model {name}: {str(e)}")
-    
-    logging.error("All model initialization attempts failed")
+            logging.warning(f"Model {name} failed: {str(e)}")
+            continue
+            
     return None
+
+# Function to get model - uses cached result
+def get_model():
+    global gemini_model
+    if gemini_model is not None:
+        return gemini_model
+        
+    start_time = time.time()
+    model_name = get_cached_model_name()
+    
+    if not model_name:
+        logging.error("No working models found")
+        return None
+        
+    try:
+        gemini_model = genai.GenerativeModel(model_name)
+        logging.info(f"Model initialized in {time.time() - start_time:.2f}s")
+        return gemini_model
+    except Exception as e:
+        logging.error(f"Error initializing model: {str(e)}")
+        return None
 
 # Health check route
 @app.get("/")
-async def health_check():
-    """Health check endpoint to verify the service is running"""
+async def root(request: Request):
+    """Redirect to dashboard or show simple health check"""
+    # If the request accepts HTML, redirect to dashboard
+    if "text/html" in request.headers.get("accept", ""):
+        return RedirectResponse(url="/dashboard")
+    
+    # Otherwise return the API status
     return {
         "status": "ok", 
         "service": "IIT Madras Assignment Helper API"
@@ -92,11 +129,17 @@ async def health_check():
 async def test():
     """Test endpoint to verify the AI model is working"""
     try:
+        start_time = time.time()
         model = get_model()
         if not model:
             return {"error": "Could not initialize AI model"}
-            
+        
+        logging.info(f"Model retrieved in {time.time() - start_time:.2f}s")
+        
+        # Generate response
         response = model.generate_content("What is 2+2?")
+        logging.info(f"Total test time: {time.time() - start_time:.2f}s")
+        
         return {
             "question": "What is 2+2?",
             "answer": response.text.strip()
@@ -112,19 +155,25 @@ async def get_answer(question: str = Form(...), file: UploadFile = None):
     Main API endpoint that accepts a question and optional file
     and returns the answer to IIT Madras graded assignment questions
     """
+    start_time = time.time()
     try:
         logging.info(f"Received question: {question}")
         
         # Get the model
         model = get_model()
+        model_time = time.time()
+        logging.info(f"Model initialization took: {model_time - start_time:.2f}s")
+        
         if not model:
             return JSONResponse(
                 content={"error": "Could not initialize AI model"},
                 status_code=500
             )
-            
+         
         # Process file if uploaded
+        answer = None
         if file and file.filename:
+            file_start = time.time()
             with tempfile.TemporaryDirectory() as temp_dir:
                 file_path = os.path.join(temp_dir, file.filename)
                 
@@ -151,10 +200,28 @@ async def get_answer(question: str = Form(...), file: UploadFile = None):
                                 if "answer" in df.columns:
                                     answer = str(df["answer"].iloc[0])
                                     logging.info(f"Found answer in CSV: {answer}")
-                                    return JSONResponse(content={"answer": answer})
+                                    logging.info(f"File processing took: {time.time() - file_start:.2f}s")
+                                    break
+            
+            if answer:
+                # Record the question and answer
+                question_history.append({
+                    "question": question,
+                    "answer": answer,
+                    "timestamp": datetime.datetime.now(),
+                    "had_file": True
+                })
+                
+                # Limit history size to prevent memory issues
+                if len(question_history) > 100:
+                    question_history.pop(0)
+                    
+                logging.info(f"Total request time: {time.time() - start_time:.2f}s")
+                return JSONResponse(content={"answer": answer})
         
         # If no answer found in file, use Gemini AI
         logging.info(f"Generating answer with Gemini AI")
+        ai_start = time.time()
         
         # Format prompt for better results
         prompt = (
@@ -176,6 +243,21 @@ async def get_answer(question: str = Form(...), file: UploadFile = None):
                 answer = answer[3:-3].strip()
                 
             logging.info(f"Gemini generated answer: {answer}")
+            logging.info(f"AI generation took: {time.time() - ai_start:.2f}s")
+
+            # Record the question and answer
+            question_history.append({
+                "question": question,
+                "answer": answer,
+                "timestamp": datetime.datetime.now(),
+                "had_file": file is not None
+            })
+
+            # Limit history size to prevent memory issues
+            if len(question_history) > 100:
+                question_history.pop(0)
+
+            logging.info(f"Total request time: {time.time() - start_time:.2f}s")
             return JSONResponse(content={"answer": answer})
         else:
             raise ValueError("Unexpected response format from Gemini API")
@@ -183,7 +265,36 @@ async def get_answer(question: str = Form(...), file: UploadFile = None):
     except Exception as e:
         error_msg = str(e)
         logging.error(f"Error processing request: {error_msg}")
+        logging.info(f"Failed request total time: {time.time() - start_time:.2f}s")
         return JSONResponse(
             content={"error": error_msg},
             status_code=500
         )
+
+# Dashboard route
+@app.get("/dashboard")
+async def dashboard(request: Request):
+    """Dashboard showing past questions and a form to ask new ones"""
+    start_time = time.time()
+    
+    # Get the most frequent questions
+    question_counts = Counter([q["question"] for q in question_history])
+    most_frequent = question_counts.most_common(5)
+    
+    # Get the most recent questions
+    recent_questions = sorted(
+        question_history, 
+        key=lambda x: x["timestamp"], 
+        reverse=True
+    )[:10]
+    
+    logging.info(f"Dashboard rendered in {time.time() - start_time:.2f}s")
+    
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "most_frequent": most_frequent,
+            "recent_questions": recent_questions
+        }
+    )
