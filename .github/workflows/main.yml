@@ -14,7 +14,7 @@ jobs:
           github_user_name: ${{ github.repository_owner }}
           svg_out_path: dist/github-contribution-grid-snake.svg
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: contribution-grid
           path: dist/github-contribution-grid-snake.svg
